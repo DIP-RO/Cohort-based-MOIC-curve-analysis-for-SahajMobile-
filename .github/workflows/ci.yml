@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Syntax check
+        run: python -m compileall sahajmobile_moic.py
+
+      - name: Run cohort MOIC analysis
+        env:
+          SAHAJMOBILE_INPUT: Installment_shorter_sampled.csv
+          SAHAJMOBILE_OUTPUT: outputs
+          MPLCONFIGDIR: /tmp/matplotlib
+        run: python sahajmobile_moic.py
+
+      - name: Upload outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: sahajmobile-moic-outputs
+          path: outputs/

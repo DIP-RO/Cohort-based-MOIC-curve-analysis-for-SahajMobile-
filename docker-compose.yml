@@ -1,0 +1,14 @@
+services:
+  moic:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: sahajmobile-moic:latest
+    environment:
+      SAHAJMOBILE_INPUT: /data/Installment_shorter_sampled.csv
+      SAHAJMOBILE_OUTPUT: /data/outputs
+      MPLCONFIGDIR: /tmp/matplotlib
+    volumes:
+      - ./:/data
+    working_dir: /data
+    command: ["python", "sahajmobile_moic.py"]
