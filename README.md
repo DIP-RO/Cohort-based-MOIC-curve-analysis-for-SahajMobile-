@@ -297,18 +297,5 @@ The dashboard makes the operational pattern clearer than the table alone: the cu
 
 The added executive-insights table turns the project into a more decision-ready artifact by showing when each cohort crosses break-even, when it reaches the 1.30× target, and how much of the portfolio each cohort contributes. That is the kind of compact summary a CTO can scan quickly during a portfolio review.
 
-## CTO Takeaway
 
-If you want this submission to feel stronger to a CTO or senior technical reviewer, the important story is not only the chart; it is the repeatable pipeline behind it.
 
-This project already shows three CTO-relevant strengths:
-
-- It is reproducible: the same analysis runs from raw CSV to outputs through Python, notebook, Docker, and GitHub Actions.
-- It is data-aware: duplicates, bad dates, and anomalous records are explicitly handled instead of being silently ignored.
-- It is decision-oriented: the dashboard converts row-level installment history into cohort-level recovery signals that can guide portfolio monitoring.
-
-If you want to make it even stronger, the next things a CTO would notice are:
-
-- a short limitations section stating that newer cohorts are not fully seasoned yet,
-- a clear assumptions section for months-on-book and exclusion rules,
-- and a brief production note about how this could be scheduled daily or weekly as a recurring reporting job.
