@@ -287,15 +287,3 @@ The chart uses Cumulative MOIC, which matches the assignment requirement. Paymen
 
 The notebook is fully in sync with the Python script: it contains the same executive-insights logic and has been executed, so the rendered notebook outputs match the latest CSV previews above.
 
-## Interpretive Analysis
-
-The portfolio is recovering strongly overall, with several cohorts crossing the 1.30× range by mid-to-late months on book. The best-performing cohorts in the sample are 2024-09, 2024-04, 2024-08, and 2024-10, which suggests the underwriting or collection process was especially healthy in that period.
-
-The weaker cohorts are the newer vintages with limited seasoning, especially 2025-10 and 2026-01, where the observed cumulative MOIC is still below 1.0×. That is expected for immature vintages, but it also means their final recovery is not yet fully observable.
-
-The dashboard makes the operational pattern clearer than the table alone: the curve panel shows collection acceleration, the heatmap shows how each vintage fills across months on book, and the ranking panel separates recoverable cohorts from underperforming ones at a glance.
-
-The added executive-insights table turns the project into a more decision-ready artifact by showing when each cohort crosses break-even, when it reaches the 1.30× target, and how much of the portfolio each cohort contributes. That is the kind of compact summary a CTO can scan quickly during a portfolio review.
-
-
-
