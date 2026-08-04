@@ -17,7 +17,7 @@ The pipeline follows the assignment requirements:
 - Aggregate payments by cohort and months on book.
 - Compute Payment MOIC and Cumulative MOIC.
 - Plot one vintage curve per origination cohort using Cumulative MOIC.
-- Save the cleaned dataset, cohort summary, MOIC tables, and executive visuals.
+- Save the cleaned dataset, cohort summary, executive insights, MOIC tables, and visual outputs.
 
 ## Project Architecture
 
@@ -210,11 +210,11 @@ Source file: [executive_insights.csv](outputs/executive_insights.csv)
 
 | Cohort | Recovery_Status | Seasoned_12M | Latest_MOB | Latest_Cumulative_MOIC | Months_to_Breakeven | Months_to_Target_1_3x | Collection_Share_Pct | Advance_Share_Pct | Max_Cumulative_MOIC |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 2024-09 | Beyond target | True | 17 | 1.390273471367063 | 5 | 7 | 10.02 | 9.08 | 1.390273471367063 |
-| 2024-04 | Beyond target | False | 11 | 1.3722471438058195 | 4 | 7 | 8.94 | 8.21 | 1.3722471438058195 |
-| 2024-08 | Beyond target | True | 16 | 1.3669652443326483 | 5 | 6 | 7.87 | 7.25 | 1.3669652443326483 |
-| 2024-10 | Beyond target | True | 15 | 1.3314932220882734 | 5 | 13 | 10.84 | 10.26 | 1.3314932220882734 |
-| 2024-02 | Beyond target | False | 8 | 1.3304970792461148 | 5 | 6 | 3.20 | 3.03 | 1.3304970792461148 |
+| 2024-09 | Beyond target | True | 17 | 1.390273471367063 | 5 | 7 | 10.022193 | 9.083004 | 1.390273471367063 |
+| 2024-04 | Beyond target | False | 11 | 1.3722471438058195 | 4 | 7 | 8.938383 | 8.207173 | 1.3722471438058195 |
+| 2024-08 | Beyond target | True | 16 | 1.3669652443326483 | 5 | 6 | 7.867532 | 7.251837 | 1.3669652443326483 |
+| 2024-10 | Beyond target | True | 15 | 1.3314932220882734 | 5 | 13 | 10.841984 | 10.259751 | 1.3314932220882734 |
+| 2024-02 | Beyond target | False | 8 | 1.3304970792461148 | 5 | 6 | 3.196928 | 3.027512 | 1.3304970792461148 |
 
 ### MOIC Table Preview
 
@@ -282,6 +282,10 @@ The GitHub Actions workflow runs on push and pull request:
 ## Notes
 
 The chart uses Cumulative MOIC, which matches the assignment requirement. Payment MOIC is included in the cohort summary and in the wide matrix output for reference.
+
+## Notebook Status
+
+The notebook is fully in sync with the Python script: it contains the same executive-insights logic and has been executed, so the rendered notebook outputs match the latest CSV previews above.
 
 ## Interpretive Analysis
 
