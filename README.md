@@ -124,14 +124,16 @@ The container uses the repository mount as its working directory, so generated f
 
 The pipeline writes these deliverables:
 
-- `cleaned_installments.csv`
-- `excluded_rows.csv`
-- `moic_table.csv`
-- `cohort_summary.csv`
-- `cumulative_moic_matrix.csv`
-- `payment_moic_matrix.csv`
-- `moic_curve.png`
-- `moic_dashboard.png`
+- [cleaned_installments.csv](outputs/cleaned_installments.csv)
+- [excluded_rows.csv](outputs/excluded_rows.csv)
+- [moic_table.csv](outputs/moic_table.csv)
+- [cohort_summary.csv](outputs/cohort_summary.csv)
+- [cumulative_moic_matrix.csv](outputs/cumulative_moic_matrix.csv)
+- [payment_moic_matrix.csv](outputs/payment_moic_matrix.csv)
+- [moic_curve.png](outputs/moic_curve.png)
+- [moic_dashboard.png](outputs/moic_dashboard.png)
+
+These files are regenerated from the latest run and kept in the repository as sample deliverables for GitHub review.
 
 ## Validation Rules
 
