@@ -135,6 +135,84 @@ The pipeline writes these deliverables:
 
 These files are regenerated from the latest run and kept in the repository as sample deliverables for GitHub review.
 
+## Sample Outputs
+
+### Cleaned Dataset Preview
+
+Source file: [cleaned_installments.csv](outputs/cleaned_installments.csv)
+
+| Asset_ID | Origination_Date | Total_Advance | Total_EMI | Payment_Date | Payment_Amount | Months_on_Book | Cohort |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 264 | 2024-01-31 | 17160.0 | 20540.0 | 2024-02-07 | 860.0 | 1 | 2024-01 |
+| 264 | 2024-01-31 | 17160.0 | 20540.0 | 2024-02-14 | 860.0 | 1 | 2024-01 |
+| 264 | 2024-01-31 | 17160.0 | 20540.0 | 2024-02-21 | 860.0 | 1 | 2024-01 |
+| 264 | 2024-01-31 | 17160.0 | 20540.0 | 2024-02-28 | 860.0 | 1 | 2024-01 |
+| 264 | 2024-01-31 | 17160.0 | 20540.0 | 2024-03-06 | 860.0 | 2 | 2024-01 |
+| 264 | 2024-01-31 | 17160.0 | 20540.0 | 2024-03-13 | 860.0 | 2 | 2024-01 |
+| 264 | 2024-01-31 | 17160.0 | 20540.0 | 2024-03-20 | 860.0 | 2 | 2024-01 |
+| 264 | 2024-01-31 | 17160.0 | 20540.0 | 2024-03-27 | 860.0 | 2 | 2024-01 |
+| 264 | 2024-01-31 | 17160.0 | 20540.0 | 2024-04-03 | 860.0 | 3 | 2024-01 |
+| 264 | 2024-01-31 | 17160.0 | 20540.0 | 2024-04-10 | 9000.0 | 3 | 2024-01 |
+
+### Excluded Rows Preview
+
+Source file: [excluded_rows.csv](outputs/excluded_rows.csv)
+
+| Asset_ID | Origination_Date | Total_Advance | Total_EMI | Payment_Date | Payment_Amount | Exclusion_Reason |
+| --- | --- | --- | --- | --- | --- | --- |
+| 24105 | 2026-01-06 | 16499.0 | 24359.0 | 1970-01-01 | 2500.0 | Sentinel / Epoch Payment_Date (1970-01-01) |
+| 1454 | 2024-11-18 | 10200.0 | 14190.0 | 1970-01-03 | 1.0 | Payment_Date before Origination_Date |
+| 1465 | 2024-11-20 | 8375.0 | 14625.0 | 2024-07-02 | 0.0 | Payment_Date before Origination_Date |
+| 13747 | 2025-10-24 | 8249.0 | 11600.0 | 2027-11-27 | 2000.0 | Months on Book > 24 — likely data entry error |
+
+### Cohort Summary Preview
+
+Source file: [cohort_summary.csv](outputs/cohort_summary.csv)
+
+| Cohort | Asset_Count | Cohort_Total_Advance | Total_Collected | Max_Months_on_Book | Max_Cumulative_MOIC | Avg_Payment_MOIC |
+| --- | --- | --- | --- | --- | --- | --- |
+| 2024-01 | 6 | 102945.0 | 119150.0 | 9 | 1.1574141531885958 | 0.1286015725765106 |
+| 2024-02 | 11 | 136095.0 | 181074.0 | 8 | 1.3304970792461148 | 0.1478330088051238 |
+| 2024-03 | 64 | 795665.0 | 1030222.0 | 12 | 1.2947936631622603 | 0.0995995125509431 |
+| 2024-04 | 32 | 368935.0 | 506270.0 | 11 | 1.3722471438058197 | 0.1143539286504849 |
+| 2024-05 | 16 | 224805.0 | 293500.0 | 9 | 1.3055759435955605 | 0.130557594359556 |
+| 2024-06 | 32 | 447855.0 | 583578.0 | 21 | 1.3030512107713434 | 0.0592296004896065 |
+| 2024-07 | 20 | 286900.0 | 381188.0 | 9 | 1.328644126873475 | 0.1328644126873475 |
+| 2024-08 | 28 | 325990.0 | 445617.0 | 16 | 1.3669652443326483 | 0.0804097202548616 |
+| 2024-09 | 37 | 408306.0 | 567657.0 | 17 | 1.390273471367063 | 0.0772374150759479 |
+| 2024-10 | 37 | 461204.0 | 614090.0 | 15 | 1.3314932220882734 | 0.083218326380517 |
+
+### MOIC Table Preview
+
+Source file: [moic_table.csv](outputs/moic_table.csv)
+
+| Cohort | Months_on_Book | Period_Collections | Cohort_Total_Advance | Payment_MOIC | Cumulative_Collections | Cumulative_MOIC |
+| --- | --- | --- | --- | --- | --- | --- |
+| 2024-01 | 1 | 23498.0 | 102945.0 | 0.2282578075671475 | 23498.0 | 0.2282578075671475 |
+| 2024-01 | 2 | 24097.0 | 102945.0 | 0.2340764485890524 | 47595.0 | 0.4623342561561999 |
+| 2024-01 | 3 | 39580.0 | 102945.0 | 0.384477147991646 | 87175.0 | 0.846811404147846 |
+| 2024-01 | 4 | 12689.0 | 102945.0 | 0.1232599932002525 | 99864.0 | 0.9700713973480986 |
+| 2024-01 | 5 | 11843.0 | 102945.0 | 0.1150420127252416 | 111707.0 | 1.0851134100733402 |
+| 2024-01 | 6 | 4950.0 | 102945.0 | 0.0480839283112341 | 116657.0 | 1.1331973383845744 |
+| 2024-01 | 7 | 0.0 | 102945.0 | 0.0 | 116657.0 | 1.1331973383845744 |
+| 2024-01 | 8 | 0.0 | 102945.0 | 0.0 | 116657.0 | 1.1331973383845744 |
+| 2024-01 | 9 | 2493.0 | 102945.0 | 0.0242168148040215 | 119150.0 | 1.1574141531885958 |
+| 2024-02 | 0 | 7520.0 | 136095.0 | 0.0552555200411477 | 7520.0 | 0.0552555200411477 |
+
+### Visual Outputs
+
+- [Vintage MOIC curve](outputs/moic_curve.png)
+- [Executive dashboard](outputs/moic_dashboard.png)
+
+### Wide Matrices
+
+The wide cohort matrices are kept in the repository as downloadable CSV files:
+
+- [cumulative_moic_matrix.csv](outputs/cumulative_moic_matrix.csv)
+- [payment_moic_matrix.csv](outputs/payment_moic_matrix.csv)
+
+These matrix files are useful for downstream analysis, but the sample preview is intentionally limited because they are wide tables.
+
 ## Validation Rules
 
 - Exact duplicate rows are removed before analysis.
