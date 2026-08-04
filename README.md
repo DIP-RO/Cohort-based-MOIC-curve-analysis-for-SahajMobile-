@@ -16,7 +16,8 @@ The pipeline follows the assignment requirements:
 - Group loans by origination month.
 - Aggregate payments by cohort and months on book.
 - Compute Payment MOIC and Cumulative MOIC.
-- Plot one vintage curve per origination cohort using Cumulative MOIC.
+- Compute Net MOIC (= Cumulative MOIC − 1.00×) to show returns above/below the advanced capital.
+- Plot one vintage curve per origination cohort using Cumulative MOIC, plus a separate Net MOIC curve chart.
 - Save the cleaned dataset, cohort summary, executive insights, MOIC tables, and visual outputs.
 
 ## Project Architecture
@@ -139,6 +140,7 @@ The pipeline writes these deliverables:
 - [cumulative_moic_matrix.csv](outputs/cumulative_moic_matrix.csv)
 - [payment_moic_matrix.csv](outputs/payment_moic_matrix.csv)
 - [moic_curve.png](outputs/moic_curve.png)
+- [net_moic_curve.png](outputs/net_moic_curve.png)
 - [moic_dashboard.png](outputs/moic_dashboard.png)
 
 These files are regenerated from the latest run and kept in the repository as sample deliverables for GitHub review.
@@ -150,6 +152,12 @@ The main visuals are embedded below so the GitHub README shows the actual analys
 ### Vintage MOIC Curve
 
 ![SahajMobile vintage MOIC curve](outputs/moic_curve.png)
+
+### Net MOIC Curve
+
+![SahajMobile net MOIC curve](outputs/net_moic_curve.png)
+
+Net MOIC = Cumulative MOIC − 1.00×, showing returns above or below the advanced capital (0.00× = net break-even).
 
 ### Executive Dashboard
 
@@ -191,18 +199,18 @@ Source file: [excluded_rows.csv](outputs/excluded_rows.csv)
 
 Source file: [cohort_summary.csv](outputs/cohort_summary.csv)
 
-| Cohort | Asset_Count | Cohort_Total_Advance | Total_Collected | Max_Months_on_Book | Max_Cumulative_MOIC | Avg_Payment_MOIC |
-| --- | --- | --- | --- | --- | --- | --- |
-| 2024-01 | 6 | 102945.0 | 119150.0 | 9 | 1.1574141531885958 | 0.1286015725765106 |
-| 2024-02 | 11 | 136095.0 | 181074.0 | 8 | 1.3304970792461148 | 0.1478330088051238 |
-| 2024-03 | 64 | 795665.0 | 1030222.0 | 12 | 1.2947936631622603 | 0.0995995125509431 |
-| 2024-04 | 32 | 368935.0 | 506270.0 | 11 | 1.3722471438058197 | 0.1143539286504849 |
-| 2024-05 | 16 | 224805.0 | 293500.0 | 9 | 1.3055759435955605 | 0.130557594359556 |
-| 2024-06 | 32 | 447855.0 | 583578.0 | 21 | 1.3030512107713434 | 0.0592296004896065 |
-| 2024-07 | 20 | 286900.0 | 381188.0 | 9 | 1.328644126873475 | 0.1328644126873475 |
-| 2024-08 | 28 | 325990.0 | 445617.0 | 16 | 1.3669652443326483 | 0.0804097202548616 |
-| 2024-09 | 37 | 408306.0 | 567657.0 | 17 | 1.390273471367063 | 0.0772374150759479 |
-| 2024-10 | 37 | 461204.0 | 614090.0 | 15 | 1.3314932220882734 | 0.083218326380517 |
+| Cohort | Asset_Count | Cohort_Total_Advance | Total_Collected | Max_Months_on_Book | Max_Cumulative_MOIC | Max_Net_MOIC | Avg_Payment_MOIC |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 2024-01 | 6 | 102945.0 | 119150.0 | 9 | 1.1574141531885958 | 0.1574141531885957 | 0.1286015725765106 |
+| 2024-02 | 11 | 136095.0 | 181074.0 | 8 | 1.3304970792461148 | 0.3304970792461148 | 0.1478330088051238 |
+| 2024-03 | 64 | 795665.0 | 1030222.0 | 12 | 1.2947936631622603 | 0.2947936631622605 | 0.0995995125509431 |
+| 2024-04 | 32 | 368935.0 | 506270.0 | 11 | 1.3722471438058197 | 0.3722471438058194 | 0.1143539286504849 |
+| 2024-05 | 16 | 224805.0 | 293500.0 | 9 | 1.3055759435955605 | 0.3055759435955605 | 0.130557594359556 |
+| 2024-06 | 32 | 447855.0 | 583578.0 | 21 | 1.3030512107713434 | 0.3030512107713434 | 0.0592296004896065 |
+| 2024-07 | 20 | 286900.0 | 381188.0 | 9 | 1.328644126873475 | 0.328644126873475 | 0.1328644126873475 |
+| 2024-08 | 28 | 325990.0 | 445617.0 | 16 | 1.3669652443326483 | 0.3669652443326483 | 0.0804097202548616 |
+| 2024-09 | 37 | 408306.0 | 567657.0 | 17 | 1.390273471367063 | 0.390273471367063 | 0.0772374150759479 |
+| 2024-10 | 37 | 461204.0 | 614090.0 | 15 | 1.3314932220882734 | 0.3314932220882733 | 0.083218326380517 |
 
 ### Executive Insights Preview
 
@@ -220,18 +228,18 @@ Source file: [executive_insights.csv](outputs/executive_insights.csv)
 
 Source file: [moic_table.csv](outputs/moic_table.csv)
 
-| Cohort | Months_on_Book | Period_Collections | Cohort_Total_Advance | Payment_MOIC | Cumulative_Collections | Cumulative_MOIC |
-| --- | --- | --- | --- | --- | --- | --- |
-| 2024-01 | 1 | 23498.0 | 102945.0 | 0.2282578075671475 | 23498.0 | 0.2282578075671475 |
-| 2024-01 | 2 | 24097.0 | 102945.0 | 0.2340764485890524 | 47595.0 | 0.4623342561561999 |
-| 2024-01 | 3 | 39580.0 | 102945.0 | 0.384477147991646 | 87175.0 | 0.846811404147846 |
-| 2024-01 | 4 | 12689.0 | 102945.0 | 0.1232599932002525 | 99864.0 | 0.9700713973480986 |
-| 2024-01 | 5 | 11843.0 | 102945.0 | 0.1150420127252416 | 111707.0 | 1.0851134100733402 |
-| 2024-01 | 6 | 4950.0 | 102945.0 | 0.0480839283112341 | 116657.0 | 1.1331973383845744 |
-| 2024-01 | 7 | 0.0 | 102945.0 | 0.0 | 116657.0 | 1.1331973383845744 |
-| 2024-01 | 8 | 0.0 | 102945.0 | 0.0 | 116657.0 | 1.1331973383845744 |
-| 2024-01 | 9 | 2493.0 | 102945.0 | 0.0242168148040215 | 119150.0 | 1.1574141531885958 |
-| 2024-02 | 0 | 7520.0 | 136095.0 | 0.0552555200411477 | 7520.0 | 0.0552555200411477 |
+| Cohort | Months_on_Book | Period_Collections | Cohort_Total_Advance | Payment_MOIC | Cumulative_Collections | Cumulative_MOIC | Net_MOIC |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 2024-01 | 1 | 23498.0 | 102945.0 | 0.2282578075671475 | 23498.0 | 0.2282578075671475 | -0.7717421924328525 |
+| 2024-01 | 2 | 24097.0 | 102945.0 | 0.2340764485890524 | 47595.0 | 0.4623342561561999 | -0.5376657438438002 |
+| 2024-01 | 3 | 39580.0 | 102945.0 | 0.384477147991646 | 87175.0 | 0.846811404147846 | -0.153188595852154 |
+| 2024-01 | 4 | 12689.0 | 102945.0 | 0.1232599932002525 | 99864.0 | 0.9700713973480986 | -0.0299286026519014 |
+| 2024-01 | 5 | 11843.0 | 102945.0 | 0.1150420127252416 | 111707.0 | 1.0851134100733402 | 0.0851134100733401 |
+| 2024-01 | 6 | 4950.0 | 102945.0 | 0.0480839283112341 | 116657.0 | 1.1331973383845744 | 0.1331973383845743 |
+| 2024-01 | 7 | 0.0 | 102945.0 | 0.0 | 116657.0 | 1.1331973383845744 | 0.1331973383845743 |
+| 2024-01 | 8 | 0.0 | 102945.0 | 0.0 | 116657.0 | 1.1331973383845744 | 0.1331973383845743 |
+| 2024-01 | 9 | 2493.0 | 102945.0 | 0.0242168148040215 | 119150.0 | 1.1574141531885958 | 0.1574141531885957 |
+| 2024-02 | 0 | 7520.0 | 136095.0 | 0.0552555200411477 | 7520.0 | 0.0552555200411477 | -0.9447444799588522 |
 
 ### Visual Outputs
 
