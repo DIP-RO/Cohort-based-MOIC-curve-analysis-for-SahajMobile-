@@ -134,12 +134,26 @@ The pipeline writes these deliverables:
 - [excluded_rows.csv](outputs/excluded_rows.csv)
 - [moic_table.csv](outputs/moic_table.csv)
 - [cohort_summary.csv](outputs/cohort_summary.csv)
+- [executive_insights.csv](outputs/executive_insights.csv)
+- [portfolio_summary.csv](outputs/portfolio_summary.csv)
 - [cumulative_moic_matrix.csv](outputs/cumulative_moic_matrix.csv)
 - [payment_moic_matrix.csv](outputs/payment_moic_matrix.csv)
 - [moic_curve.png](outputs/moic_curve.png)
 - [moic_dashboard.png](outputs/moic_dashboard.png)
 
 These files are regenerated from the latest run and kept in the repository as sample deliverables for GitHub review.
+
+## Visual Outputs
+
+The main visuals are embedded below so the GitHub README shows the actual analysis output, not just links.
+
+### Vintage MOIC Curve
+
+![SahajMobile vintage MOIC curve](outputs/moic_curve.png)
+
+### Executive Dashboard
+
+![SahajMobile executive dashboard](outputs/moic_dashboard.png)
 
 ## Sample Outputs
 
@@ -190,6 +204,18 @@ Source file: [cohort_summary.csv](outputs/cohort_summary.csv)
 | 2024-09 | 37 | 408306.0 | 567657.0 | 17 | 1.390273471367063 | 0.0772374150759479 |
 | 2024-10 | 37 | 461204.0 | 614090.0 | 15 | 1.3314932220882734 | 0.083218326380517 |
 
+### Executive Insights Preview
+
+Source file: [executive_insights.csv](outputs/executive_insights.csv)
+
+| Cohort | Recovery_Status | Seasoned_12M | Latest_MOB | Latest_Cumulative_MOIC | Months_to_Breakeven | Months_to_Target_1_3x | Collection_Share_Pct | Advance_Share_Pct | Max_Cumulative_MOIC |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 2024-09 | Beyond target | True | 17 | 1.390273471367063 | 5 | 7 | 10.02 | 9.08 | 1.390273471367063 |
+| 2024-04 | Beyond target | False | 11 | 1.3722471438058195 | 4 | 7 | 8.94 | 8.21 | 1.3722471438058195 |
+| 2024-08 | Beyond target | True | 16 | 1.3669652443326483 | 5 | 6 | 7.87 | 7.25 | 1.3669652443326483 |
+| 2024-10 | Beyond target | True | 15 | 1.3314932220882734 | 5 | 13 | 10.84 | 10.26 | 1.3314932220882734 |
+| 2024-02 | Beyond target | False | 8 | 1.3304970792461148 | 5 | 6 | 3.20 | 3.03 | 1.3304970792461148 |
+
 ### MOIC Table Preview
 
 Source file: [moic_table.csv](outputs/moic_table.csv)
@@ -221,6 +247,19 @@ The wide cohort matrices are kept in the repository as downloadable CSV files:
 
 These matrix files are useful for downstream analysis, but the sample preview is intentionally limited because they are wide tables.
 
+### Portfolio Summary
+
+Source file: [portfolio_summary.csv](outputs/portfolio_summary.csv)
+
+| Metric | Value | Unit |
+| --- | --- | --- |
+| Portfolio Recovery Rate | 1.26 | x |
+| Recovered Cohort Share | 95.28 | % of collections |
+| Top-3 Cohort Share | 26.83 | % of collections |
+| Seasoned Cohorts (12M+) | 8 | cohorts |
+| Cohorts Above 1.0x | 12 | cohorts |
+| Cohorts Above 1.3x | 8 | cohorts |
+
 ## Validation Rules
 
 - Exact duplicate rows are removed before analysis.
@@ -251,3 +290,21 @@ The portfolio is recovering strongly overall, with several cohorts crossing the 
 The weaker cohorts are the newer vintages with limited seasoning, especially 2025-10 and 2026-01, where the observed cumulative MOIC is still below 1.0×. That is expected for immature vintages, but it also means their final recovery is not yet fully observable.
 
 The dashboard makes the operational pattern clearer than the table alone: the curve panel shows collection acceleration, the heatmap shows how each vintage fills across months on book, and the ranking panel separates recoverable cohorts from underperforming ones at a glance.
+
+The added executive-insights table turns the project into a more decision-ready artifact by showing when each cohort crosses break-even, when it reaches the 1.30× target, and how much of the portfolio each cohort contributes. That is the kind of compact summary a CTO can scan quickly during a portfolio review.
+
+## CTO Takeaway
+
+If you want this submission to feel stronger to a CTO or senior technical reviewer, the important story is not only the chart; it is the repeatable pipeline behind it.
+
+This project already shows three CTO-relevant strengths:
+
+- It is reproducible: the same analysis runs from raw CSV to outputs through Python, notebook, Docker, and GitHub Actions.
+- It is data-aware: duplicates, bad dates, and anomalous records are explicitly handled instead of being silently ignored.
+- It is decision-oriented: the dashboard converts row-level installment history into cohort-level recovery signals that can guide portfolio monitoring.
+
+If you want to make it even stronger, the next things a CTO would notice are:
+
+- a short limitations section stating that newer cohorts are not fully seasoned yet,
+- a clear assumptions section for months-on-book and exclusion rules,
+- and a brief production note about how this could be scheduled daily or weekly as a recurring reporting job.

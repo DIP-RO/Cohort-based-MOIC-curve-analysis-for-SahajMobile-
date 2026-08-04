@@ -15,6 +15,7 @@ Outputs (all written to OUTPUT_DIR)
   excluded_rows.csv           – removed rows annotated with exclusion reason
   moic_table.csv              – long-form Period + Cumulative MOIC (cohort × MOB)
   cohort_summary.csv          – one-row-per-cohort KPI table
+    executive_insights.csv      – CTO-facing timing and recovery insights
   cumulative_moic_matrix.csv  – wide pivot: cohort × MOB → Cumulative MOIC
   payment_moic_matrix.csv     – wide pivot: cohort × MOB → Payment MOIC
   moic_curve.png              – vintage MOIC curve chart
@@ -365,6 +366,81 @@ def build_tables(moic_df: pd.DataFrame, cohort_meta: pd.DataFrame) -> tuple:
     )
 
     return summary, cum_matrix, pay_matrix
+
+
+def build_executive_insights(moic_df: pd.DataFrame, cohort_summary: pd.DataFrame) -> tuple:
+    """
+    Build a CTO-facing cohort analysis table with breakeven timing and recovery flags.
+    """
+    latest_rows = (
+        moic_df.sort_values(["Cohort", "Months_on_Book"])
+              .groupby("Cohort", as_index=False)
+              .tail(1)
+              [["Cohort", "Months_on_Book", "Cumulative_MOIC", "Payment_MOIC"]]
+              .rename(columns={
+                  "Months_on_Book": "Latest_MOB",
+                  "Cumulative_MOIC": "Latest_Cumulative_MOIC",
+                  "Payment_MOIC": "Latest_Payment_MOIC",
+              })
+    )
+
+    def _first_crossing(group: pd.DataFrame, threshold: float):
+        crossed = group.loc[group["Cumulative_MOIC"] >= threshold, "Months_on_Book"]
+        return int(crossed.iloc[0]) if not crossed.empty else np.nan
+
+    threshold_map = (
+        moic_df.sort_values(["Cohort", "Months_on_Book"])
+              .groupby("Cohort")
+              .apply(lambda group: pd.Series({
+                  "Months_to_Breakeven": _first_crossing(group, 1.0),
+                  "Months_to_Target_1_3x": _first_crossing(group, 1.3),
+              }))
+              .reset_index()
+    )
+
+    insights = cohort_summary.merge(latest_rows, on="Cohort", how="left")
+    insights = insights.merge(threshold_map, on="Cohort", how="left")
+    insights["Collection_Share_Pct"] = (
+        insights["Total_Collected"] / insights["Total_Collected"].sum() * 100
+    )
+    insights["Advance_Share_Pct"] = (
+        insights["Cohort_Total_Advance"] / insights["Cohort_Total_Advance"].sum() * 100
+    )
+    insights["Seasoned_12M"] = insights["Max_Months_on_Book"] >= 12
+    insights["Recovery_Status"] = np.select(
+        [insights["Latest_Cumulative_MOIC"] >= 1.3, insights["Latest_Cumulative_MOIC"] >= 1.0],
+        ["Beyond target", "Recovered"],
+        default="Below breakeven",
+    )
+    insights["Months_to_Breakeven"] = insights["Months_to_Breakeven"].astype("Int64")
+    insights["Months_to_Target_1_3x"] = insights["Months_to_Target_1_3x"].astype("Int64")
+
+    insights = insights[[
+        "Cohort",
+        "Recovery_Status",
+        "Seasoned_12M",
+        "Latest_MOB",
+        "Latest_Cumulative_MOIC",
+        "Months_to_Breakeven",
+        "Months_to_Target_1_3x",
+        "Collection_Share_Pct",
+        "Advance_Share_Pct",
+        "Max_Cumulative_MOIC",
+    ]].sort_values(["Latest_Cumulative_MOIC", "Collection_Share_Pct"], ascending=[False, False])
+
+    portfolio_rate = cohort_summary["Total_Collected"].sum() / cohort_summary["Cohort_Total_Advance"].sum()
+    top3_share = insights.head(3)["Collection_Share_Pct"].sum()
+    recovered_share = insights.loc[insights["Latest_Cumulative_MOIC"] >= 1.0, "Collection_Share_Pct"].sum()
+    portfolio_summary = pd.DataFrame([
+        {"Metric": "Portfolio Recovery Rate", "Value": round(portfolio_rate, 4), "Unit": "x"},
+        {"Metric": "Recovered Cohort Share", "Value": round(recovered_share, 2), "Unit": "% of collections"},
+        {"Metric": "Top-3 Cohort Share", "Value": round(top3_share, 2), "Unit": "% of collections"},
+        {"Metric": "Seasoned Cohorts (12M+)", "Value": int(insights["Seasoned_12M"].sum()), "Unit": "cohorts"},
+        {"Metric": "Cohorts Above 1.0x", "Value": int((insights["Latest_Cumulative_MOIC"] >= 1.0).sum()), "Unit": "cohorts"},
+        {"Metric": "Cohorts Above 1.3x", "Value": int((insights["Latest_Cumulative_MOIC"] >= 1.3).sum()), "Unit": "cohorts"},
+    ])
+
+    return insights, portfolio_summary
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -721,6 +797,9 @@ def main():
     print("\n[3] Building Summary Tables ...")
     summary, cum_matrix, pay_matrix = build_tables(moic_df, cohort_meta)
 
+    print("\n[3b] Building Executive Insights ...")
+    executive_insights, portfolio_summary = build_executive_insights(moic_df, summary)
+
     # ── 4. Print to console ───────────────────────────────────────────────────
     print("\n" + "─" * 68)
     print("  COHORT SUMMARY TABLE")
@@ -738,6 +817,17 @@ def main():
     with pd.option_context("display.float_format", "{:.4f}".format, "display.width", 200):
         print(cum_matrix.to_string(index=False))
 
+    print("\n" + "─" * 68)
+    print("  EXECUTIVE INSIGHTS  (CTO-facing)")
+    print("─" * 68)
+    with pd.option_context("display.float_format", "{:.4f}".format, "display.width", 180):
+        print(executive_insights.to_string(index=False))
+
+    print("\n" + "─" * 68)
+    print("  PORTFOLIO SUMMARY")
+    print("─" * 68)
+    print(portfolio_summary.to_string(index=False))
+
     # ── 4. Plot ───────────────────────────────────────────────────────────────
     print("\n[4] Plotting MOIC Curves ...")
     plot_moic_curves(moic_df, f"{out_dir}/moic_curve.png")
@@ -752,6 +842,8 @@ def main():
         "excluded_rows.csv"          : excluded,
         "moic_table.csv"             : moic_df,
         "cohort_summary.csv"         : summary,
+        "executive_insights.csv"     : executive_insights,
+        "portfolio_summary.csv"      : portfolio_summary,
         "cumulative_moic_matrix.csv" : cum_matrix,
         "payment_moic_matrix.csv"    : pay_matrix,
     }
