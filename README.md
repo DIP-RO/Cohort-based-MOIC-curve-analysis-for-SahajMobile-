@@ -1,5 +1,11 @@
 # SahajMobile Cohort MOIC Analysis
 
+## Data Science - Python Project
+
+Data Set download file: [Google Drive link](https://drive.google.com/file/d/1faPRfsnS8OMNu6c4BUjSY4cJV7axmPDs/view?usp=drive_link)
+
+Contact: jason@sahajmobile.com
+
 Python project for building a cohort-based MOIC curve from installment payment data.
 
 ## What this project does
@@ -136,6 +142,8 @@ The pipeline writes these deliverables:
 These files are regenerated from the latest run and kept in the repository as sample deliverables for GitHub review.
 
 ## Sample Outputs
+
+All preview tables below are sourced from the generated files in [outputs/](outputs) and match the latest run of [sahajmobile_moic.py](sahajmobile_moic.py).
 
 ### Cleaned Dataset Preview
 
