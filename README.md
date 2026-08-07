@@ -4,7 +4,7 @@
 
 Data Set download file: [Google Drive link](https://drive.google.com/file/d/1faPRfsnS8OMNu6c4BUjSY4cJV7axmPDs/view?usp=drive_link)
 
-Contact: jason@sahajmobile.com
+Contact: 
 
 Python project for building a cohort-based MOIC curve from installment payment data.
 
