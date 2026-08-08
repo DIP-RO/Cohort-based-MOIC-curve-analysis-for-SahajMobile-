@@ -54,13 +54,33 @@ def resolve_paths() -> tuple[str, str]:
     in_path  = sys.argv[1] if len(sys.argv) > 1 else INPUT_PATH
     out_path = sys.argv[2] if len(sys.argv) > 2 else OUTPUT_DIR
 
-    if not os.path.exists(in_path):
+    if not os.path.isfile(in_path):
         print(f"[Error] Input file not found: {in_path}")
         print(f"  Usage: python {Path(__file__).name} [input.csv] [output_dir]")
         sys.exit(1)
 
     os.makedirs(out_path, exist_ok=True)
     return in_path, out_path
+
+
+# Leading characters that spreadsheet applications interpret as a formula.
+_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _neutralize_formula(value):
+    """Prefix spreadsheet-formula triggers with a quote so Excel treats them as text."""
+    if isinstance(value, str) and value.startswith(_FORMULA_PREFIXES):
+        return "'" + value
+    return value
+
+
+def write_csv(df: pd.DataFrame, path: str) -> None:
+    """Write a DataFrame to CSV with untrusted text neutralized against CSV injection."""
+    safe = df.copy()
+    for column in safe.columns:
+        if safe[column].dtype == object:
+            safe[column] = safe[column].map(_neutralize_formula)
+    safe.to_csv(path, index=False)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -982,7 +1002,7 @@ def main():
         "payment_moic_matrix.csv"    : pay_matrix,
     }
     for filename, df in outputs.items():
-        df.to_csv(f"{out_dir}/{filename}", index=False)
+        write_csv(df, f"{out_dir}/{filename}")
         print(f"  ✓  {filename:<38}  ({len(df):,} rows)")
 
     print(f"\n  All outputs → {out_dir}/")

@@ -11,4 +11,7 @@ RUN pip install --no-cache-dir -r /app/requirements.txt
 
 COPY . /app
 
+RUN useradd --create-home --uid 1000 appuser && chown -R appuser:appuser /app
+USER appuser
+
 CMD ["python", "sahajmobile_moic.py"]
