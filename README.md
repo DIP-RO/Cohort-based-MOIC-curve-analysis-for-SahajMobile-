@@ -272,9 +272,18 @@ Source file: [portfolio_summary.csv](outputs/portfolio_summary.csv)
 
 - Exact duplicate rows are removed before analysis.
 - Invalid payment dates are excluded and listed in `excluded_rows.csv`.
+- Amount fields that cannot be parsed are reported on stderr and excluded with the reason `Unparseable Payment_Amount`, so they are never treated as a zero payment.
 - Months on book is calculated from payment date minus origination date.
 - Payment MOIC uses collections for one period only.
 - Cumulative MOIC uses cumulative collections through each month on book.
+
+## Error Handling
+
+The script fails loudly instead of producing partial or misleading deliverables:
+
+- Fatal problems (missing input file, unreadable or empty CSV, missing required columns, no analysable rows after cleaning, no positive payments, non-positive cohort advance, unwritable output path) raise `AnalysisError`, print `[Error] ...` on stderr, and exit with status 1.
+- Recoverable data-quality problems (unparseable amounts, cohorts without collections) print `[Warning] ...` on stderr and continue.
+- Only the known benign matplotlib `tight_layout` warning is suppressed; all other warnings stay visible.
 
 ## CI/CD
 
