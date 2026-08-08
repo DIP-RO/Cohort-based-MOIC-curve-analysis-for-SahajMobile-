@@ -72,6 +72,9 @@ flowchart TD
 
 - `sahajmobile_moic.py` - main script that runs the cohort analysis and writes outputs.
 - `sahajmobile_moic.ipynb` - notebook version of the same workflow.
+- `tests/` - pytest unit tests for parsing, cleaning, MOIC computation, tables, and charts.
+- `pytest.ini` - pytest configuration.
+- `requirements-dev.txt` - dependencies for running the test suite.
 - `Installment_shorter_sampled.csv` - sample dataset provided with the project.
 - `outputs/` - generated CSV files and chart images.
 - `.github/workflows/ci.yml` - GitHub Actions workflow.
@@ -95,6 +98,21 @@ Install locally with:
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+```
+
+## Tests
+
+Install the dev dependencies and run the suite:
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
+
+With coverage:
+
+```bash
+pytest --cov=sahajmobile_moic --cov-branch --cov-report=term-missing
 ```
 
 ## Run Locally
@@ -283,6 +301,7 @@ The GitHub Actions workflow runs on push and pull request:
 - checks out the repository
 - installs Python dependencies
 - compiles the Python script
+- runs the pytest suite with branch coverage
 - runs the script on the sample CSV
 - validates the analysis finishes successfully
 - uploads generated outputs as a workflow artifact
