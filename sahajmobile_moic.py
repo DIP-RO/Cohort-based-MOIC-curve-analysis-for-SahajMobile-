@@ -48,11 +48,40 @@ OUTPUT_DIR = os.environ.get("SAHAJMOBILE_OUTPUT", str(BASE_DIR / "outputs"))
 # Chosen as 24 months (generous upper bound for a phone EMI loan).
 MAX_MOB = 24
 
+MONEY_COLUMNS = ("Total_Advance", "Total_EMI", "Payment_Amount")
+DATE_COLUMNS  = ("Origination_Date", "Payment_Date")
 
-def resolve_paths() -> tuple[str, str]:
-    """Resolve (input_csv, output_dir): CLI args → env vars → script defaults."""
-    in_path  = sys.argv[1] if len(sys.argv) > 1 else INPUT_PATH
-    out_path = sys.argv[2] if len(sys.argv) > 2 else OUTPUT_DIR
+COLUMN_RENAMES = {
+    "Asset ID":         "Asset_ID",
+    "Origination Date": "Origination_Date",
+    "Total Advance":    "Total_Advance",
+    "Total EMI":        "Total_EMI",
+    "Payment Date":     "Payment_Date",
+    "Payment Amount":   "Payment_Amount",
+}
+
+# Shared chart theme for the standalone vintage-curve charts.
+CURVE_THEME = {
+    "bg":    "#0d1117",
+    "grid":  "#21262d",
+    "label": "#e6edf3",
+    "tick":  "#8b949e",
+    "annot": "#6e7681",
+    "spine": "#30363d",
+}
+
+
+def resolve_paths(args: list[str] | None = None) -> tuple[str, str]:
+    """
+    Resolve (input_csv, output_dir): positional args → env vars → script defaults.
+
+    `args` defaults to the CLI arguments; notebooks pass an explicit list
+    (e.g. `[]`) so that kernel arguments are not mistaken for paths.
+    """
+    args = sys.argv[1:] if args is None else args
+
+    in_path  = args[0] if len(args) > 0 else INPUT_PATH
+    out_path = args[1] if len(args) > 1 else OUTPUT_DIR
 
     if not os.path.exists(in_path):
         print(f"[Error] Input file not found: {in_path}")
@@ -61,6 +90,82 @@ def resolve_paths() -> tuple[str, str]:
 
     os.makedirs(out_path, exist_ok=True)
     return in_path, out_path
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SECTION 0 · SHARED UTILITIES
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def months_on_book_series(df: pd.DataFrame) -> pd.Series:
+    """Calendar-month distance: Payment_Date - Origination_Date (in months)."""
+    return (
+        (df["Payment_Date"].dt.year  - df["Origination_Date"].dt.year)  * 12
+        + (df["Payment_Date"].dt.month - df["Origination_Date"].dt.month)
+    )
+
+
+def latest_cohort_rows(moic_df: pd.DataFrame, value_cols: list[str]) -> pd.DataFrame:
+    """Last observed MOB row per cohort, keeping Cohort, Months_on_Book + value_cols."""
+    return (
+        moic_df.sort_values(["Cohort", "Months_on_Book"])
+               .groupby("Cohort", as_index=False)
+               .tail(1)
+               [["Cohort", "Months_on_Book", *value_cols]]
+    )
+
+
+def cohort_mob_matrix(moic_df: pd.DataFrame, value_col: str) -> pd.DataFrame:
+    """Wide pivot cohort × months-on-book for value_col, cohorts sorted ascending."""
+    return (
+        moic_df.pivot_table(
+            index="Cohort", columns="Months_on_Book",
+            values=value_col, aggfunc="first",
+        )
+        .reindex(sorted(moic_df["Cohort"].unique()))
+    )
+
+
+def flatten_mob_matrix(matrix: pd.DataFrame) -> pd.DataFrame:
+    """Turn a cohort × MOB pivot into a flat frame with Cohort + MOB_<n> columns."""
+    flat = matrix.reset_index()
+    flat.columns = ["Cohort"] + [f"MOB_{c}" for c in matrix.columns]
+    return flat
+
+
+def moic_formatter(signed: bool = False) -> mticker.FuncFormatter:
+    """Tick formatter rendering MOIC multiples as 0.00× (or +0.00× when signed)."""
+    fmt = "{:+.2f}×" if signed else "{:.2f}×"
+    return mticker.FuncFormatter(lambda y, _: fmt.format(y))
+
+
+def cohort_palette(n: int) -> np.ndarray:
+    """Chronological colour gradient (oldest = deep blue, newest = bright yellow)."""
+    return plt.cm.turbo(np.linspace(0.10, 0.92, n))
+
+
+def save_figure(fig, output_path: str, dpi: int = 150) -> None:
+    """Write a figure to disk with the shared export settings and log the path."""
+    plt.savefig(
+        output_path, dpi=dpi, bbox_inches="tight",
+        facecolor=fig.get_facecolor(),
+    )
+    plt.close(fig)
+    print(f"  Saved → {output_path}")
+
+
+def print_table(
+    title: str, df: pd.DataFrame, width: int = 140, float_format: str | None = "{:.4f}"
+) -> None:
+    """Print a titled console table with consistent float formatting."""
+    print("\n" + "─" * 68)
+    print(f"  {title}")
+    print("─" * 68)
+    with pd.option_context(
+        "display.float_format", float_format.format if float_format else None,
+        "display.max_columns", 15,
+        "display.width", width,
+    ):
+        print(df.to_string(index=False))
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -108,29 +213,15 @@ def load_and_clean(filepath: str) -> tuple:
     # ── Load ──────────────────────────────────────────────────────────────────
     raw = pd.read_csv(filepath)
     raw.columns = raw.columns.str.strip()
-    raw = raw.rename(
-        columns={
-            "Asset ID":         "Asset_ID",
-            "Origination Date": "Origination_Date",
-            "Total Advance":    "Total_Advance",
-            "Total EMI":        "Total_EMI",
-            "Payment Date":     "Payment_Date",
-            "Payment Amount":   "Payment_Amount",
-        }
-    )
+    raw = raw.rename(columns=COLUMN_RENAMES)
 
     # ── Parse numeric columns ─────────────────────────────────────────────────
-    raw["Total_Advance"]  = _parse_money(raw["Total_Advance"])
-    raw["Total_EMI"]      = _parse_money(raw["Total_EMI"])
-    raw["Payment_Amount"] = _parse_money(raw["Payment_Amount"])
+    for column in MONEY_COLUMNS:
+        raw[column] = _parse_money(raw[column])
 
     # ── Parse date columns ────────────────────────────────────────────────────
-    raw["Origination_Date"] = pd.to_datetime(
-        raw["Origination_Date"], errors="coerce", dayfirst=False
-    )
-    raw["Payment_Date"] = pd.to_datetime(
-        raw["Payment_Date"], errors="coerce", dayfirst=False
-    )
+    for column in DATE_COLUMNS:
+        raw[column] = pd.to_datetime(raw[column], errors="coerce", dayfirst=False)
 
     # ── Step 1: Remove exact duplicate rows ───────────────────────────────────
     n_raw   = len(raw)
@@ -140,13 +231,6 @@ def load_and_clean(filepath: str) -> tuple:
     # ── Step 2: Build exclusion masks (first match wins per row) ──────────────
     EPOCH    = pd.Timestamp("1970-01-01")
     both     = raw["Payment_Date"].notna() & raw["Origination_Date"].notna()
-
-    def _mob_series(df):
-        """Calendar-month distance: Payment_Date - Origination_Date (in months)."""
-        return (
-            (df["Payment_Date"].dt.year  - df["Origination_Date"].dt.year)  * 12
-            + (df["Payment_Date"].dt.month - df["Origination_Date"].dt.month)
-        )
 
     masks = {
         "Unparseable Origination_Date":
@@ -162,7 +246,7 @@ def load_and_clean(filepath: str) -> tuple:
             both & (raw["Payment_Date"] < raw["Origination_Date"]),
 
         f"Months on Book > {MAX_MOB} — likely data entry error":
-            both & (_mob_series(raw) > MAX_MOB),
+            both & (months_on_book_series(raw) > MAX_MOB),
 
         "Missing or non-positive Total_Advance":
             raw["Total_Advance"].isna() | (raw["Total_Advance"] <= 0),
@@ -189,7 +273,7 @@ def load_and_clean(filepath: str) -> tuple:
 
     # Derived columns
     cleaned["Months_on_Book"] = (
-        _mob_series(cleaned).clip(lower=0).astype(int)
+        months_on_book_series(cleaned).clip(lower=0).astype(int)
     )
     cleaned["Cohort"] = (
         cleaned["Origination_Date"].dt.to_period("M").astype(str)
@@ -349,31 +433,9 @@ def build_tables(moic_df: pd.DataFrame, cohort_meta: pd.DataFrame) -> tuple:
         "Max_Cumulative_MOIC", "Max_Net_MOIC", "Avg_Payment_MOIC",
     ]]
 
-    # ── Pivot: Cumulative MOIC ────────────────────────────────────────────────
-    cum_matrix = (
-        moic_df.pivot_table(
-            index="Cohort", columns="Months_on_Book",
-            values="Cumulative_MOIC", aggfunc="first",
-        )
-        .reset_index()
-    )
-    cum_matrix.columns.name = None
-    cum_matrix.columns = (
-        ["Cohort"] + [f"MOB_{c}" for c in cum_matrix.columns[1:]]
-    )
-
-    # ── Pivot: Payment MOIC ───────────────────────────────────────────────────
-    pay_matrix = (
-        moic_df.pivot_table(
-            index="Cohort", columns="Months_on_Book",
-            values="Payment_MOIC", aggfunc="first",
-        )
-        .reset_index()
-    )
-    pay_matrix.columns.name = None
-    pay_matrix.columns = (
-        ["Cohort"] + [f"MOB_{c}" for c in pay_matrix.columns[1:]]
-    )
+    # ── Wide pivots: Cumulative MOIC and Payment MOIC ─────────────────────────
+    cum_matrix = flatten_mob_matrix(cohort_mob_matrix(moic_df, "Cumulative_MOIC"))
+    pay_matrix = flatten_mob_matrix(cohort_mob_matrix(moic_df, "Payment_MOIC"))
 
     return summary, cum_matrix, pay_matrix
 
@@ -382,17 +444,13 @@ def build_executive_insights(moic_df: pd.DataFrame, cohort_summary: pd.DataFrame
     """
     Build a CTO-facing cohort analysis table with breakeven timing and recovery flags.
     """
-    latest_rows = (
-        moic_df.sort_values(["Cohort", "Months_on_Book"])
-              .groupby("Cohort", as_index=False)
-              .tail(1)
-              [["Cohort", "Months_on_Book", "Cumulative_MOIC", "Payment_MOIC"]]
-              .rename(columns={
-                  "Months_on_Book": "Latest_MOB",
-                  "Cumulative_MOIC": "Latest_Cumulative_MOIC",
-                  "Payment_MOIC": "Latest_Payment_MOIC",
-              })
-    )
+    latest_rows = latest_cohort_rows(
+        moic_df, ["Cumulative_MOIC", "Payment_MOIC"]
+    ).rename(columns={
+        "Months_on_Book": "Latest_MOB",
+        "Cumulative_MOIC": "Latest_Cumulative_MOIC",
+        "Payment_MOIC": "Latest_Payment_MOIC",
+    })
 
     def _first_crossing(group: pd.DataFrame, threshold: float):
         crossed = group.loc[group["Cumulative_MOIC"] >= threshold, "Months_on_Book"]
@@ -457,43 +515,50 @@ def build_executive_insights(moic_df: pd.DataFrame, cohort_summary: pd.DataFrame
 # SECTION 4 · CHART
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def plot_moic_curves(moic_df: pd.DataFrame, output_path: str) -> None:
+def _plot_cohort_curves(
+    moic_df: pd.DataFrame,
+    output_path: str,
+    *,
+    value_col: str,
+    y_label: str,
+    title: str,
+    footer_note: str,
+    reference_lines: list[tuple[float, str]],
+    y_limits: tuple[float, float | None],
+    signed_ticks: bool = False,
+    ref_headroom: float | None = None,
+) -> None:
     """
-    Render one vintage MOIC curve per origination cohort.
+    Render one vintage curve per origination cohort for `value_col`.
+
+    Shared implementation behind plot_moic_curves and plot_net_moic_curves.
 
     Chart spec
     ----------
     X-axis : Months on Book (integer)
-    Y-axis : Cumulative MOIC (formatted as 0.00×)
+    Y-axis : `value_col`, formatted as 0.00x (signed when `signed_ticks`)
     Lines  : one per origination cohort, colour-coded chronologically
+
+    A reference line is skipped when `ref_headroom` is given and the line sits
+    above it (keeps unreachable targets off a short curve).
     """
     cohorts = sorted(moic_df["Cohort"].unique())
-    n       = len(cohorts)
-
-    # Chronological colour gradient (oldest = deep blue, newest = bright yellow)
-    PALETTE = plt.cm.turbo(np.linspace(0.10, 0.92, n))
-
-    # ── Theme constants ───────────────────────────────────────────────────────
-    BG       = "#0d1117"
-    GRID_C   = "#21262d"
-    LABEL_C  = "#e6edf3"
-    TICK_C   = "#8b949e"
-    ANNOT_C  = "#6e7681"
+    palette = cohort_palette(len(cohorts))
 
     fig, ax = plt.subplots(figsize=(16, 8))
-    fig.patch.set_facecolor(BG)
-    ax.set_facecolor(BG)
+    fig.patch.set_facecolor(CURVE_THEME["bg"])
+    ax.set_facecolor(CURVE_THEME["bg"])
 
-    # ── Draw one curve per cohort ─────────────────────────────────────────────
+    # -- Draw one curve per cohort --------------------------------------------
     for i, cohort in enumerate(cohorts):
         sub = moic_df[moic_df["Cohort"] == cohort].sort_values("Months_on_Book")
         ax.plot(
             sub["Months_on_Book"],
-            sub["Cumulative_MOIC"],
+            sub[value_col],
             marker="o",
             markersize=4.5,
             linewidth=2.0,
-            color=PALETTE[i],
+            color=palette[i],
             label=cohort,
             alpha=0.92,
             zorder=3,
@@ -501,134 +566,10 @@ def plot_moic_curves(moic_df: pd.DataFrame, output_path: str) -> None:
             markeredgecolor="#00000033",
         )
 
-    # ── Reference lines ───────────────────────────────────────────────────────
-    y_max = moic_df["Cumulative_MOIC"].max()
-    for ref_y, ref_label in [
-        (1.0, "Break-even  1.00×"),
-        (1.3, "Target  1.30×"),
-    ]:
-        if ref_y <= y_max * 1.12:
-            ax.axhline(
-                ref_y, color="#cccccc", linestyle="--",
-                linewidth=0.85, alpha=0.35, zorder=2,
-            )
-            ax.text(
-                0.006, ref_y + 0.008,
-                ref_label,
-                transform=ax.get_yaxis_transform(),
-                color=ANNOT_C, fontsize=8.5, va="bottom",
-            )
-
-    # ── Axis labels & title ───────────────────────────────────────────────────
-    ax.set_xlabel("Months on Book (MOB)", color=LABEL_C, fontsize=12, labelpad=10)
-    ax.set_ylabel("Cumulative MOIC", color=LABEL_C, fontsize=12, labelpad=10)
-    ax.set_title(
-        "SahajMobile — Vintage MOIC Curves by Origination Cohort",
-        color="white", fontsize=14, fontweight="bold", pad=18,
-    )
-
-    # ── Tick formatting ───────────────────────────────────────────────────────
-    ax.tick_params(colors=TICK_C, labelsize=9.5)
-    ax.yaxis.set_major_formatter(
-        mticker.FuncFormatter(lambda y, _: f"{y:.2f}×")
-    )
-    ax.xaxis.set_major_locator(mticker.MaxNLocator(integer=True))
-    ax.set_ylim(bottom=0)
-    ax.set_xlim(left=0)
-
-    # ── Grid & spines ─────────────────────────────────────────────────────────
-    for spine in ax.spines.values():
-        spine.set_edgecolor("#30363d")
-    ax.grid(True, color=GRID_C, linestyle="--", linewidth=0.65, zorder=1)
-
-    # ── Footer annotation ─────────────────────────────────────────────────────
-    fig.text(
-        0.5, 0.01,
-        f"Only actual collections (Payment_Amount > 0) are included  |  "
-        f"{n} origination cohorts  |  "
-        f"Dashed lines: break-even (1.00×) and target (1.30×)",
-        ha="center", color=ANNOT_C, fontsize=8,
-    )
-
-    # ── Legend (outside chart, right side) ───────────────────────────────────
-    leg = ax.legend(
-        title="Origination\nCohort",
-        title_fontsize=9,
-        fontsize=8.5,
-        ncol=1,
-        framealpha=0.25,
-        edgecolor="#444c56",
-        facecolor="#161b22",
-        labelcolor="white",
-        loc="upper left",
-        bbox_to_anchor=(1.01, 1.0),
-        borderaxespad=0,
-        handlelength=1.8,
-        handleheight=1.0,
-    )
-    leg.get_title().set_color(TICK_C)
-
-    plt.tight_layout(rect=[0, 0.03, 1, 1])
-    plt.savefig(
-        output_path, dpi=150, bbox_inches="tight",
-        facecolor=fig.get_facecolor(),
-    )
-    plt.close(fig)
-    print(f"  Saved → {output_path}")
-
-
-def plot_net_moic_curves(moic_df: pd.DataFrame, output_path: str) -> None:
-    """
-    Render one Net MOIC curve per origination cohort (separate chart).
-
-    Net MOIC = Cumulative MOIC − 1.00×  (returns above/below invested capital).
-
-    Chart spec
-    ----------
-    X-axis : Months on Book (integer)
-    Y-axis : Net MOIC (formatted as 0.00×)
-    Lines  : one per origination cohort, colour-coded chronologically
-    """
-    cohorts = sorted(moic_df["Cohort"].unique())
-    n       = len(cohorts)
-
-    # Chronological colour gradient (oldest = deep blue, newest = bright yellow)
-    PALETTE = plt.cm.turbo(np.linspace(0.10, 0.92, n))
-
-    # ── Theme constants ───────────────────────────────────────────────────────
-    BG       = "#0d1117"
-    GRID_C   = "#21262d"
-    LABEL_C  = "#e6edf3"
-    TICK_C   = "#8b949e"
-    ANNOT_C  = "#6e7681"
-
-    fig, ax = plt.subplots(figsize=(16, 8))
-    fig.patch.set_facecolor(BG)
-    ax.set_facecolor(BG)
-
-    # ── Draw one curve per cohort ─────────────────────────────────────────────
-    for i, cohort in enumerate(cohorts):
-        sub = moic_df[moic_df["Cohort"] == cohort].sort_values("Months_on_Book")
-        ax.plot(
-            sub["Months_on_Book"],
-            sub["Net_MOIC"],
-            marker="o",
-            markersize=4.5,
-            linewidth=2.0,
-            color=PALETTE[i],
-            label=cohort,
-            alpha=0.92,
-            zorder=3,
-            markeredgewidth=0.6,
-            markeredgecolor="#00000033",
-        )
-
-    # ── Reference lines ───────────────────────────────────────────────────────
-    y_max = moic_df["Net_MOIC"].max()
-    y_min = moic_df["Net_MOIC"].min()
-    for ref_y, ref_label in [
-        (0.0, "Net break-even  0.00×"),
-    ]:
+    # -- Reference lines ------------------------------------------------------
+    for ref_y, ref_label in reference_lines:
+        if ref_headroom is not None and ref_y > ref_headroom:
+            continue
         ax.axhline(
             ref_y, color="#cccccc", linestyle="--",
             linewidth=0.85, alpha=0.35, zorder=2,
@@ -637,41 +578,38 @@ def plot_net_moic_curves(moic_df: pd.DataFrame, output_path: str) -> None:
             0.006, ref_y + 0.008,
             ref_label,
             transform=ax.get_yaxis_transform(),
-            color=ANNOT_C, fontsize=8.5, va="bottom",
+            color=CURVE_THEME["annot"], fontsize=8.5, va="bottom",
         )
 
-    # ── Axis labels & title ───────────────────────────────────────────────────
-    ax.set_xlabel("Months on Book (MOB)", color=LABEL_C, fontsize=12, labelpad=10)
-    ax.set_ylabel("Net MOIC (Cumulative MOIC − 1.00×)", color=LABEL_C, fontsize=12, labelpad=10)
-    ax.set_title(
-        "SahajMobile — Net MOIC Curves by Origination Cohort",
-        color="white", fontsize=14, fontweight="bold", pad=18,
+    # -- Axis labels & title --------------------------------------------------
+    ax.set_xlabel(
+        "Months on Book (MOB)", color=CURVE_THEME["label"], fontsize=12, labelpad=10
     )
+    ax.set_ylabel(y_label, color=CURVE_THEME["label"], fontsize=12, labelpad=10)
+    ax.set_title(title, color="white", fontsize=14, fontweight="bold", pad=18)
 
-    # ── Tick formatting ───────────────────────────────────────────────────────
-    ax.tick_params(colors=TICK_C, labelsize=9.5)
-    ax.yaxis.set_major_formatter(
-        mticker.FuncFormatter(lambda y, _: f"{y:+.2f}×")
-    )
+    # -- Tick formatting ------------------------------------------------------
+    ax.tick_params(colors=CURVE_THEME["tick"], labelsize=9.5)
+    ax.yaxis.set_major_formatter(moic_formatter(signed=signed_ticks))
     ax.xaxis.set_major_locator(mticker.MaxNLocator(integer=True))
-    ax.set_ylim(bottom=min(0.0, y_min - 0.06), top=max(0.0, y_max) + 0.06)
+    ax.set_ylim(bottom=y_limits[0], top=y_limits[1])
     ax.set_xlim(left=0)
 
-    # ── Grid & spines ─────────────────────────────────────────────────────────
+    # -- Grid & spines --------------------------------------------------------
     for spine in ax.spines.values():
-        spine.set_edgecolor("#30363d")
-    ax.grid(True, color=GRID_C, linestyle="--", linewidth=0.65, zorder=1)
+        spine.set_edgecolor(CURVE_THEME["spine"])
+    ax.grid(True, color=CURVE_THEME["grid"], linestyle="--", linewidth=0.65, zorder=1)
 
-    # ── Footer annotation ─────────────────────────────────────────────────────
+    # -- Footer annotation ----------------------------------------------------
     fig.text(
         0.5, 0.01,
         f"Only actual collections (Payment_Amount > 0) are included  |  "
-        f"{n} origination cohorts  |  "
-        f"Net MOIC = Cumulative MOIC − 1.00× (above 0.00× = profit above advance)",
-        ha="center", color=ANNOT_C, fontsize=8,
+        f"{len(cohorts)} origination cohorts  |  "
+        f"{footer_note}",
+        ha="center", color=CURVE_THEME["annot"], fontsize=8,
     )
 
-    # ── Legend (outside chart, right side) ───────────────────────────────────
+    # -- Legend (outside chart, right side) -----------------------------------
     leg = ax.legend(
         title="Origination\nCohort",
         title_fontsize=9,
@@ -687,15 +625,54 @@ def plot_net_moic_curves(moic_df: pd.DataFrame, output_path: str) -> None:
         handlelength=1.8,
         handleheight=1.0,
     )
-    leg.get_title().set_color(TICK_C)
+    leg.get_title().set_color(CURVE_THEME["tick"])
 
     plt.tight_layout(rect=[0, 0.03, 1, 1])
-    plt.savefig(
-        output_path, dpi=150, bbox_inches="tight",
-        facecolor=fig.get_facecolor(),
+    save_figure(fig, output_path)
+
+
+def plot_moic_curves(moic_df: pd.DataFrame, output_path: str) -> None:
+    """Render one vintage Cumulative MOIC curve per origination cohort."""
+    _plot_cohort_curves(
+        moic_df,
+        output_path,
+        value_col="Cumulative_MOIC",
+        y_label="Cumulative MOIC",
+        title="SahajMobile \u2014 Vintage MOIC Curves by Origination Cohort",
+        footer_note=(
+            "Dashed lines: break-even (1.00\u00d7) and target (1.30\u00d7)"
+        ),
+        reference_lines=[
+            (1.0, "Break-even  1.00\u00d7"),
+            (1.3, "Target  1.30\u00d7"),
+        ],
+        y_limits=(0, None),
+        ref_headroom=moic_df["Cumulative_MOIC"].max() * 1.12,
     )
-    plt.close(fig)
-    print(f"  Saved → {output_path}")
+
+
+def plot_net_moic_curves(moic_df: pd.DataFrame, output_path: str) -> None:
+    """
+    Render one Net MOIC curve per origination cohort (separate chart).
+
+    Net MOIC = Cumulative MOIC - 1.00x (returns above/below invested capital).
+    """
+    y_max = moic_df["Net_MOIC"].max()
+    y_min = moic_df["Net_MOIC"].min()
+    _plot_cohort_curves(
+        moic_df,
+        output_path,
+        value_col="Net_MOIC",
+        y_label="Net MOIC (Cumulative MOIC \u2212 1.00\u00d7)",
+        title="SahajMobile \u2014 Net MOIC Curves by Origination Cohort",
+        footer_note=(
+            "Net MOIC = Cumulative MOIC \u2212 1.00\u00d7 "
+            "(above 0.00\u00d7 = profit above advance)"
+        ),
+        reference_lines=[(0.0, "Net break-even  0.00\u00d7")],
+        y_limits=(min(0.0, y_min - 0.06), max(0.0, y_max) + 0.06),
+        signed_ticks=True,
+    )
 
 
 def plot_executive_dashboard(
@@ -705,23 +682,11 @@ def plot_executive_dashboard(
     Render an executive-style dashboard with curve, heatmap, ranking, and KPI panels.
     """
     cohorts = sorted(moic_df["Cohort"].unique())
-    curve_matrix = (
-        moic_df.pivot_table(
-            index="Cohort",
-            columns="Months_on_Book",
-            values="Cumulative_MOIC",
-            aggfunc="first",
-        )
-        .reindex(cohorts)
-    )
+    curve_matrix = cohort_mob_matrix(moic_df, "Cumulative_MOIC")
 
-    latest_rows = (
-        moic_df.sort_values(["Cohort", "Months_on_Book"])
-              .groupby("Cohort", as_index=False)
-              .tail(1)
-              [["Cohort", "Months_on_Book", "Cumulative_MOIC"]]
+    latest_rows = cohort_summary.merge(
+        latest_cohort_rows(moic_df, ["Cumulative_MOIC"]), on="Cohort", how="left"
     )
-    latest_rows = cohort_summary.merge(latest_rows, on="Cohort", how="left")
     latest_rows["Recovery_Spread"] = (
         latest_rows["Total_Collected"] - latest_rows["Cohort_Total_Advance"]
     )
@@ -759,7 +724,7 @@ def plot_executive_dashboard(
         for spine in ax.spines.values():
             spine.set_edgecolor("#334155")
 
-    palette = plt.cm.turbo(np.linspace(0.10, 0.92, len(cohorts)))
+    palette = cohort_palette(len(cohorts))
 
     for i, cohort in enumerate(cohorts):
         cohort_slice = moic_df[moic_df["Cohort"] == cohort].sort_values("Months_on_Book")
@@ -785,7 +750,7 @@ def plot_executive_dashboard(
     )
     ax_curve.set_xlabel("Months on Book", color=LABEL_C, fontsize=11)
     ax_curve.set_ylabel("Cumulative MOIC", color=LABEL_C, fontsize=11)
-    ax_curve.yaxis.set_major_formatter(mticker.FuncFormatter(lambda y, _: f"{y:.2f}×"))
+    ax_curve.yaxis.set_major_formatter(moic_formatter())
     ax_curve.xaxis.set_major_locator(mticker.MaxNLocator(integer=True))
     ax_curve.tick_params(colors=TICK_C, labelsize=9)
     ax_curve.grid(True, color=GRID_C, linestyle="--", linewidth=0.6, alpha=0.8)
@@ -893,14 +858,7 @@ def plot_executive_dashboard(
     )
 
     plt.tight_layout(rect=[0, 0.03, 1, 0.96])
-    plt.savefig(
-        output_path,
-        dpi=160,
-        bbox_inches="tight",
-        facecolor=fig.get_facecolor(),
-    )
-    plt.close(fig)
-    print(f"  Saved → {output_path}")
+    save_figure(fig, output_path, dpi=160)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -932,32 +890,12 @@ def main():
     executive_insights, portfolio_summary = build_executive_insights(moic_df, summary)
 
     # ── 4. Print to console ───────────────────────────────────────────────────
-    print("\n" + "─" * 68)
-    print("  COHORT SUMMARY TABLE")
-    print("─" * 68)
-    with pd.option_context(
-        "display.float_format", "{:.4f}".format,
-        "display.max_columns", 15,
-        "display.width", 140,
-    ):
-        print(summary.to_string(index=False))
-
-    print("\n" + "─" * 68)
-    print("  CUMULATIVE MOIC MATRIX  (cohort × months on book)")
-    print("─" * 68)
-    with pd.option_context("display.float_format", "{:.4f}".format, "display.width", 200):
-        print(cum_matrix.to_string(index=False))
-
-    print("\n" + "─" * 68)
-    print("  EXECUTIVE INSIGHTS  (CTO-facing)")
-    print("─" * 68)
-    with pd.option_context("display.float_format", "{:.4f}".format, "display.width", 180):
-        print(executive_insights.to_string(index=False))
-
-    print("\n" + "─" * 68)
-    print("  PORTFOLIO SUMMARY")
-    print("─" * 68)
-    print(portfolio_summary.to_string(index=False))
+    print_table("COHORT SUMMARY TABLE", summary)
+    print_table(
+        "CUMULATIVE MOIC MATRIX  (cohort × months on book)", cum_matrix, width=200
+    )
+    print_table("EXECUTIVE INSIGHTS  (CTO-facing)", executive_insights, width=180)
+    print_table("PORTFOLIO SUMMARY", portfolio_summary, float_format=None)
 
     # ── 4. Plot ───────────────────────────────────────────────────────────────
     print("\n[4] Plotting MOIC Curves ...")
