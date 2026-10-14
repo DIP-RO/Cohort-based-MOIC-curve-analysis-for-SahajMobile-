@@ -33,7 +33,31 @@ import matplotlib.ticker as mticker
 import numpy as np
 import pandas as pd
 
-warnings.filterwarnings("ignore")
+# Matplotlib reports this for the dashboard's colorbar/gridspec layout; the saved
+# figure is correct. Every other warning stays visible so data issues surface.
+warnings.filterwarnings(
+    "ignore",
+    message="This figure includes Axes that are not compatible with tight_layout",
+    category=UserWarning,
+)
+
+REQUIRED_COLUMNS = (
+    "Asset_ID",
+    "Origination_Date",
+    "Total_Advance",
+    "Payment_Date",
+    "Payment_Amount",
+)
+
+
+class AnalysisError(RuntimeError):
+    """Raised when the input data or environment makes the analysis impossible."""
+
+
+def _warn(message: str) -> None:
+    """Report a non-fatal data-quality or environment problem on stderr."""
+    print(f"[Warning] {message}", file=sys.stderr)
+
 
 # ─── Configuration ─────────────────────────────────────────────────────────────
 # Resolution order for input/output paths: CLI args → env vars → defaults below.
@@ -51,15 +75,24 @@ MAX_MOB = 24
 
 def resolve_paths() -> tuple[str, str]:
     """Resolve (input_csv, output_dir): CLI args → env vars → script defaults."""
+    usage = f"Usage: python {Path(__file__).name} [input.csv] [output_dir]"
+
+    if len(sys.argv) > 3:
+        raise AnalysisError(f"Too many arguments: {sys.argv[1:]}\n  {usage}")
+
     in_path  = sys.argv[1] if len(sys.argv) > 1 else INPUT_PATH
     out_path = sys.argv[2] if len(sys.argv) > 2 else OUTPUT_DIR
 
     if not os.path.exists(in_path):
-        print(f"[Error] Input file not found: {in_path}")
-        print(f"  Usage: python {Path(__file__).name} [input.csv] [output_dir]")
-        sys.exit(1)
+        raise AnalysisError(f"Input file not found: {in_path}\n  {usage}")
+    if not os.path.isfile(in_path):
+        raise AnalysisError(f"Input path is not a file: {in_path}\n  {usage}")
 
-    os.makedirs(out_path, exist_ok=True)
+    try:
+        os.makedirs(out_path, exist_ok=True)
+    except OSError as exc:
+        raise AnalysisError(f"Cannot create output directory {out_path}: {exc}") from exc
+
     return in_path, out_path
 
 
@@ -67,9 +100,12 @@ def resolve_paths() -> tuple[str, str]:
 # SECTION 1 · LOAD & CLEAN
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def _parse_money(series: pd.Series) -> pd.Series:
+def _parse_money(series: pd.Series, column: str) -> pd.Series:
     """
     Convert messy currency strings to float.
+
+    Values that cannot be interpreted as an amount become NaN and are reported
+    on stderr, so they are never silently confused with a blank amount.
 
     Examples
     --------
@@ -77,6 +113,7 @@ def _parse_money(series: pd.Series) -> pd.Series:
     ' - '      →     0.0   (dash = scheduled but unpaid)
     ' 9,000 '  →  9000.0
     NaN        →     NaN
+    'n/a'      →     NaN   (reported as unparseable)
     """
     def _conv(v):
         if pd.isna(v):
@@ -92,7 +129,17 @@ def _parse_money(series: pd.Series) -> pd.Series:
         except ValueError:
             return np.nan
 
-    return series.map(_conv)
+    parsed = series.map(_conv)
+
+    unparseable = series[parsed.isna() & series.notna()]
+    if len(unparseable):
+        samples = ", ".join(repr(v) for v in unparseable.unique()[:5])
+        _warn(
+            f"{len(unparseable):,} value(s) in {column} could not be parsed as an "
+            f"amount and were kept as missing (examples: {samples})"
+        )
+
+    return parsed
 
 
 def load_and_clean(filepath: str) -> tuple:
@@ -106,7 +153,13 @@ def load_and_clean(filepath: str) -> tuple:
     excluded : pd.DataFrame – removed rows with Exclusion_Reason annotation
     """
     # ── Load ──────────────────────────────────────────────────────────────────
-    raw = pd.read_csv(filepath)
+    try:
+        raw = pd.read_csv(filepath)
+    except pd.errors.EmptyDataError as exc:
+        raise AnalysisError(f"Input file has no data: {filepath}") from exc
+    except (pd.errors.ParserError, UnicodeDecodeError, OSError) as exc:
+        raise AnalysisError(f"Cannot read input CSV {filepath}: {exc}") from exc
+
     raw.columns = raw.columns.str.strip()
     raw = raw.rename(
         columns={
@@ -119,12 +172,26 @@ def load_and_clean(filepath: str) -> tuple:
         }
     )
 
+    missing = [c for c in REQUIRED_COLUMNS if c not in raw.columns]
+    if missing:
+        raise AnalysisError(
+            f"Input CSV {filepath} is missing required column(s): "
+            f"{', '.join(missing)}\n  Columns found: {', '.join(raw.columns)}"
+        )
+    if raw.empty:
+        raise AnalysisError(f"Input CSV {filepath} contains headers but no rows")
+
     # ── Parse numeric columns ─────────────────────────────────────────────────
-    raw["Total_Advance"]  = _parse_money(raw["Total_Advance"])
-    raw["Total_EMI"]      = _parse_money(raw["Total_EMI"])
-    raw["Payment_Amount"] = _parse_money(raw["Payment_Amount"])
+    # Keep the raw payment strings so a genuinely blank amount can be told apart
+    # from one that failed to parse.
+    payment_amount_raw    = raw["Payment_Amount"].copy()
+    raw["Total_Advance"]  = _parse_money(raw["Total_Advance"], "Total_Advance")
+    raw["Payment_Amount"] = _parse_money(raw["Payment_Amount"], "Payment_Amount")
+    if "Total_EMI" in raw.columns:
+        raw["Total_EMI"] = _parse_money(raw["Total_EMI"], "Total_EMI")
 
     # ── Parse date columns ────────────────────────────────────────────────────
+    # Unparseable dates become NaT here and are excluded (with a reason) below.
     raw["Origination_Date"] = pd.to_datetime(
         raw["Origination_Date"], errors="coerce", dayfirst=False
     )
@@ -166,6 +233,9 @@ def load_and_clean(filepath: str) -> tuple:
 
         "Missing or non-positive Total_Advance":
             raw["Total_Advance"].isna() | (raw["Total_Advance"] <= 0),
+
+        "Unparseable Payment_Amount":
+            raw["Payment_Amount"].isna() & payment_amount_raw.loc[raw.index].notna(),
     }
 
     # First-match exclusion: each row gets at most one reason label
@@ -184,7 +254,18 @@ def load_and_clean(filepath: str) -> tuple:
     # ── Step 3: Build cleaned dataset ─────────────────────────────────────────
     cleaned = raw.drop(index=list(seen)).copy()
 
-    # Treat remaining NaN payment amounts as 0 (scheduled but unpaid)
+    if cleaned.empty:
+        reasons = "; ".join(
+            f"{cnt} {reason}"
+            for reason, cnt in excluded["Exclusion_Reason"].value_counts().items()
+        )
+        raise AnalysisError(
+            f"No analysable rows left after cleaning {filepath} "
+            f"({n_raw:,} raw rows). Exclusions: {reasons or 'none'}"
+        )
+
+    # Remaining NaN payment amounts are blank in the source (scheduled but unpaid);
+    # unparseable amounts were already excluded above.
     cleaned["Payment_Amount"] = cleaned["Payment_Amount"].fillna(0.0)
 
     # Derived columns
@@ -252,8 +333,23 @@ def compute_moic(cleaned: pd.DataFrame) -> tuple:
                   .reset_index()
     )
 
+    invalid_advance = cohort_meta[
+        cohort_meta["Cohort_Total_Advance"].isna()
+        | (cohort_meta["Cohort_Total_Advance"] <= 0)
+    ]
+    if len(invalid_advance):
+        raise AnalysisError(
+            "Cohort total advance must be positive to compute MOIC; invalid for "
+            f"cohort(s): {', '.join(invalid_advance['Cohort'])}"
+        )
+
     # ── Aggregate actual (positive) payments only ─────────────────────────────
     paid = cleaned[cleaned["Payment_Amount"] > 0].copy()
+    if paid.empty:
+        raise AnalysisError(
+            f"No positive payments found in {len(cleaned):,} cleaned rows; "
+            "MOIC curves cannot be computed"
+        )
 
     agg = (
         paid.groupby(["Cohort", "Months_on_Book"])["Payment_Amount"]
@@ -282,6 +378,12 @@ def compute_moic(cleaned: pd.DataFrame) -> tuple:
     agg = agg.merge(
         cohort_meta[["Cohort", "Cohort_Total_Advance"]], on="Cohort", how="left"
     )
+    unmatched = agg.loc[agg["Cohort_Total_Advance"].isna(), "Cohort"].unique()
+    if len(unmatched):
+        raise AnalysisError(
+            "Collections exist for cohort(s) with no advance metadata: "
+            f"{', '.join(unmatched)}"
+        )
     agg = agg.sort_values(["Cohort", "Months_on_Book"]).reset_index(drop=True)
 
     # ── MOIC metrics ──────────────────────────────────────────────────────────
@@ -342,6 +444,13 @@ def build_tables(moic_df: pd.DataFrame, cohort_meta: pd.DataFrame) -> tuple:
     )
     summary = cohort_meta.merge(kpis, on="Cohort", how="left").sort_values("Cohort")
 
+    no_collections = summary.loc[summary["Total_Collected"].isna(), "Cohort"]
+    if len(no_collections):
+        _warn(
+            "No collections recorded for cohort(s) "
+            f"{', '.join(no_collections)}; their KPIs are left empty"
+        )
+
     # Reorder for readability
     summary = summary[[
         "Cohort", "Asset_Count", "Cohort_Total_Advance",
@@ -394,18 +503,20 @@ def build_executive_insights(moic_df: pd.DataFrame, cohort_summary: pd.DataFrame
               })
     )
 
-    def _first_crossing(group: pd.DataFrame, threshold: float):
-        crossed = group.loc[group["Cumulative_MOIC"] >= threshold, "Months_on_Book"]
-        return int(crossed.iloc[0]) if not crossed.empty else np.nan
+    ordered = moic_df.sort_values(["Cohort", "Months_on_Book"])
+
+    def _first_crossing(threshold: float, name: str) -> pd.DataFrame:
+        crossed = ordered[ordered["Cumulative_MOIC"] >= threshold]
+        return (
+            crossed.groupby("Cohort", as_index=False)["Months_on_Book"]
+                   .first()
+                   .rename(columns={"Months_on_Book": name})
+        )
 
     threshold_map = (
-        moic_df.sort_values(["Cohort", "Months_on_Book"])
-              .groupby("Cohort")
-              .apply(lambda group: pd.Series({
-                  "Months_to_Breakeven": _first_crossing(group, 1.0),
-                  "Months_to_Target_1_3x": _first_crossing(group, 1.3),
-              }))
-              .reset_index()
+        ordered[["Cohort"]].drop_duplicates()
+        .merge(_first_crossing(1.0, "Months_to_Breakeven"), on="Cohort", how="left")
+        .merge(_first_crossing(1.3, "Months_to_Target_1_3x"), on="Cohort", how="left")
     )
 
     insights = cohort_summary.merge(latest_rows, on="Cohort", how="left")
@@ -456,6 +567,21 @@ def build_executive_insights(moic_df: pd.DataFrame, cohort_summary: pd.DataFrame
 # ═══════════════════════════════════════════════════════════════════════════════
 # SECTION 4 · CHART
 # ═══════════════════════════════════════════════════════════════════════════════
+
+def _save_figure(fig, output_path: str, dpi: int) -> None:
+    """Write a figure to disk, always releasing it and reporting write failures."""
+    try:
+        fig.savefig(
+            output_path, dpi=dpi, bbox_inches="tight",
+            facecolor=fig.get_facecolor(),
+        )
+    except (OSError, ValueError) as exc:
+        raise AnalysisError(f"Cannot write chart {output_path}: {exc}") from exc
+    finally:
+        plt.close(fig)
+
+    print(f"  Saved → {output_path}")
+
 
 def plot_moic_curves(moic_df: pd.DataFrame, output_path: str) -> None:
     """
@@ -569,12 +695,7 @@ def plot_moic_curves(moic_df: pd.DataFrame, output_path: str) -> None:
     leg.get_title().set_color(TICK_C)
 
     plt.tight_layout(rect=[0, 0.03, 1, 1])
-    plt.savefig(
-        output_path, dpi=150, bbox_inches="tight",
-        facecolor=fig.get_facecolor(),
-    )
-    plt.close(fig)
-    print(f"  Saved → {output_path}")
+    _save_figure(fig, output_path, dpi=150)
 
 
 def plot_net_moic_curves(moic_df: pd.DataFrame, output_path: str) -> None:
@@ -690,12 +811,7 @@ def plot_net_moic_curves(moic_df: pd.DataFrame, output_path: str) -> None:
     leg.get_title().set_color(TICK_C)
 
     plt.tight_layout(rect=[0, 0.03, 1, 1])
-    plt.savefig(
-        output_path, dpi=150, bbox_inches="tight",
-        facecolor=fig.get_facecolor(),
-    )
-    plt.close(fig)
-    print(f"  Saved → {output_path}")
+    _save_figure(fig, output_path, dpi=150)
 
 
 def plot_executive_dashboard(
@@ -893,14 +1009,7 @@ def plot_executive_dashboard(
     )
 
     plt.tight_layout(rect=[0, 0.03, 1, 0.96])
-    plt.savefig(
-        output_path,
-        dpi=160,
-        bbox_inches="tight",
-        facecolor=fig.get_facecolor(),
-    )
-    plt.close(fig)
-    print(f"  Saved → {output_path}")
+    _save_figure(fig, output_path, dpi=160)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -982,7 +1091,11 @@ def main():
         "payment_moic_matrix.csv"    : pay_matrix,
     }
     for filename, df in outputs.items():
-        df.to_csv(f"{out_dir}/{filename}", index=False)
+        path = f"{out_dir}/{filename}"
+        try:
+            df.to_csv(path, index=False)
+        except OSError as exc:
+            raise AnalysisError(f"Cannot write output file {path}: {exc}") from exc
         print(f"  ✓  {filename:<38}  ({len(df):,} rows)")
 
     print(f"\n  All outputs → {out_dir}/")
@@ -992,4 +1105,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except AnalysisError as exc:
+        print(f"[Error] {exc}", file=sys.stderr)
+        sys.exit(1)
