@@ -19,10 +19,15 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements-dev.txt
 
       - name: Syntax check
         run: python -m compileall sahajmobile_moic.py
+
+      - name: Unit tests
+        env:
+          MPLCONFIGDIR: /tmp/matplotlib
+        run: python -m pytest --cov=sahajmobile_moic --cov-branch --cov-report=term-missing
 
       - name: Run cohort MOIC analysis
         env:
