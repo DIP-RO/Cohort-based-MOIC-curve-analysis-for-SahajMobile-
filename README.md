@@ -70,8 +70,8 @@ flowchart TD
 
 ## Repository Layout
 
-- `sahajmobile_moic.py` - main script that runs the cohort analysis and writes outputs.
-- `sahajmobile_moic.ipynb` - notebook version of the same workflow.
+- `sahajmobile_moic.py` - single source of truth: shared utilities, pipeline stages, and CLI entry point.
+- `sahajmobile_moic.ipynb` - notebook walkthrough that imports the pipeline from `sahajmobile_moic.py`.
 - `Installment_shorter_sampled.csv` - sample dataset provided with the project.
 - `outputs/` - generated CSV files and chart images.
 - `.github/workflows/ci.yml` - GitHub Actions workflow.
@@ -293,5 +293,5 @@ The chart uses Cumulative MOIC, which matches the assignment requirement. Paymen
 
 ## Notebook Status
 
-The notebook is fully in sync with the Python script: it contains the same executive-insights logic and has been executed, so the rendered notebook outputs match the latest CSV previews above.
+The notebook imports every pipeline function from `sahajmobile_moic.py` instead of redefining it, so the two entry points cannot drift apart. It has been executed, so the rendered notebook outputs match the latest CSV previews above.
 
