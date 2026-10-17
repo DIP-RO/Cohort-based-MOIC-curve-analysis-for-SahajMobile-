@@ -8,7 +8,12 @@ services:
       SAHAJMOBILE_INPUT: /data/Installment_shorter_sampled.csv
       SAHAJMOBILE_OUTPUT: /data/outputs
       MPLCONFIGDIR: /tmp/matplotlib
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     volumes:
-      - ./:/data
-    working_dir: /data
-    command: ["python", "sahajmobile_moic.py"]
+      - ./Installment_shorter_sampled.csv:/data/Installment_shorter_sampled.csv:ro
+      - ./outputs:/data/outputs
+    working_dir: /app
+    command: ["python", "/app/sahajmobile_moic.py"]
